@@ -22,22 +22,32 @@ const getFeeStatus = (student) => {
     const registration = new Date(registrationDate);
     today.setHours(0, 0, 0, 0);
     registration.setHours(0, 0, 0, 0);
+
     if (registration > today) {
         return { text: 'Paid', className: 'bg-green-100 text-green-800', amountDue: 0 };
     }
-    const yearsElapsed = today.getFullYear() - registration.getFullYear();
-    const monthsElapsedInYears = yearsElapsed * 12;
-    const monthDiff = today.getMonth() - registration.getMonth();
-    const totalMonths = monthsElapsedInYears + monthDiff + 1;
-    if (totalMonths <= 0) {
+
+    let monthsElapsed = (today.getFullYear() - registration.getFullYear()) * 12;
+    monthsElapsed += today.getMonth() - registration.getMonth();
+
+    if (today.getDate() < registration.getDate()) {
+        monthsElapsed--;
+    }
+    
+    const totalMonthsDue = monthsElapsed + 1;
+
+    if (totalMonthsDue <= 0) {
         return { text: 'Paid', className: 'bg-green-100 text-green-800', amountDue: 0 };
     }
-    const totalFeeDue = totalMonths * monthlyFee;
+
+    const totalFeeDue = totalMonthsDue * monthlyFee;
     const totalPaid = payments.reduce((acc, p) => acc + p.amount, 0);
     const amountDue = totalFeeDue - totalPaid;
+
     if (amountDue <= 0) {
         return { text: 'Paid', className: 'bg-green-100 text-green-800', amountDue: 0 };
     }
+
     return { text: 'Overdue', className: 'bg-red-100 text-red-800', amountDue };
 };
 
