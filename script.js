@@ -1,4 +1,3 @@
-
 const PlusIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" /></svg>`;
 const DeleteIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
 const SearchIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>`;
@@ -58,21 +57,35 @@ function setState(newState) {
 }
 
 function useLocalStorage(key, initialValue) {
-    const item = window.localStorage.getItem(key);
-    const storedValue = item ? JSON.parse(item) : initialValue;
-    
-    const setValue = (value) => {
-        const valueToStore = value instanceof Function ? value(storedValue) : value;
-        setState({ students: valueToStore });
-        window.localStorage.setItem(key, JSON.stringify(valueToStore));
+    const get = () => {
+        const item = window.localStorage.getItem(key);
+        if (item) {
+            try {
+                return JSON.parse(item);
+            } catch (e) {
+                return initialValue;
+            }
+        }
+        return initialValue;
     };
 
-    if (!item) {
-        window.localStorage.setItem(key, JSON.stringify(initialValue));
+    const set = (value) => {
+        try {
+            const valueToStore = value instanceof Function ? value(get()) : value;
+            window.localStorage.setItem(key, JSON.stringify(valueToStore));
+        } catch (e) {
+            console.error(`Error setting localStorage key “${key}”:`, e);
+        }
+    };
+
+    if (window.localStorage.getItem(key) === null) {
+        set(initialValue);
     }
-    
-    return [storedValue, setValue];
+
+    return [get, set];
 }
+
+const [getStudents, setStudents] = useLocalStorage('students', []);
 
 // --- RENDER FUNCTIONS ---
 function renderApp() {
@@ -137,8 +150,8 @@ function renderApp() {
                     ${StudentTable(filteredStudents, selectedStudentIds)}
                 </div>
             </main>
-            ${isFormModalOpen ? Modal(editingStudent ? 'Edit Student Details' : 'Add New Student', StudentForm(editingStudent), closeFormModal) : ''}
-            ${paymentModalStudent ? PaymentModal(paymentModalStudent, closePaymentModal, handleAddPayment) : ''}
+            ${isFormModalOpen ? Modal(editingStudent ? 'Edit Student Details' : 'Add New Student', StudentForm(editingStudent)) : ''}
+            ${paymentModalStudent ? PaymentModal(paymentModalStudent) : ''}
         </div>
     `;
     attachEventListeners();
@@ -264,7 +277,7 @@ function EmptyState(title, message) {
     `;
 }
 
-function Modal(title, content, onClose) {
+function Modal(title, content) {
     return `
         <div id="modal-backdrop" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 transition-opacity duration-300">
             <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg m-4 transform transition-all duration-300 ease-out">
@@ -335,7 +348,7 @@ function StudentForm(initialData) {
     `;
 }
 
-function PaymentModal(student, onClose, onAddPayment) {
+function PaymentModal(student) {
     const formatCurrency = (value) => `₹${value.toLocaleString('en-IN')}`;
     return Modal(`Payments for ${student.name}`, `
         <div class="space-y-6">
@@ -376,7 +389,7 @@ function PaymentModal(student, onClose, onAddPayment) {
                 ` : ''}
             </div>
         </div>
-    `, onClose);
+    `);
 }
 
 // --- EVENT HANDLERS & ATTACHMENT ---
@@ -421,41 +434,67 @@ function handleAddStudent(studentData) {
         id: Date.now().toString(),
         payments: [],
     };
-    const [, setStudents] = useLocalStorage('students', state.students);
-    setStudents(prev => [...prev, newStudent]);
-    closeFormModal();
+    const students = getStudents();
+    const newStudents = [...students, newStudent];
+    setStudents(newStudents);
+    setState({ students: newStudents, isFormModalOpen: false, editingStudent: null });
 }
 
 function handleUpdateStudent(updatedStudent) {
-    const [, setStudents] = useLocalStorage('students', state.students);
-    setStudents(prev => prev.map(s => (s.id === updatedStudent.id ? updatedStudent : s)));
-    closeFormModal();
+    const students = getStudents();
+    const newStudents = students.map(s => (s.id === updatedStudent.id ? updatedStudent : s));
+    setStudents(newStudents);
+    setState({ students: newStudents, isFormModalOpen: false, editingStudent: null });
 }
 
 function handleDeleteStudent(studentId) {
     if (window.confirm('Are you sure you want to delete this student record? This action cannot be undone.')) {
-        const [, setStudents] = useLocalStorage('students', state.students);
-        setStudents(prev => prev.filter(s => s.id !== studentId));
-        setState({ selectedStudentIds: state.selectedStudentIds.filter(id => id !== studentId) });
+        const students = getStudents();
+        const newStudents = students.filter(s => s.id !== studentId);
+        setStudents(newStudents);
+        setState({
+            students: newStudents,
+            selectedStudentIds: state.selectedStudentIds.filter(id => id !== studentId)
+        });
     }
 }
 
-function handleAddPayment(studentId, paymentData) {
+function handleAddPaymentSubmit(e) {
+    e.preventDefault();
+    const form = e.target;
+    const amountInput = form.querySelector('#amount');
+    const dateInput = form.querySelector('#date');
+
+    const amount = parseFloat(amountInput.value);
+    const date = dateInput.value;
+
+    if (!amount || amount <= 0) {
+        alert('Please enter a valid payment amount.');
+        return;
+    }
+
     const newPayment = {
-        ...paymentData,
         id: Date.now().toString(),
+        amount,
+        date,
     };
-    const [, setStudents] = useLocalStorage('students', state.students);
-    setStudents(prev =>
-        prev.map(s =>
-            s.id === studentId
-                ? { ...s, payments: [...s.payments, newPayment].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) }
-                : s
-        )
-    );
-    // Re-render with the payment modal still open to show the new payment
-    const updatedStudent = state.students.find(s => s.id === studentId);
-    setState({ paymentModalStudent: updatedStudent });
+
+    const studentId = state.paymentModalStudent.id;
+    const students = getStudents();
+    let updatedStudent;
+    const newStudents = students.map(s => {
+        if (s.id === studentId) {
+            updatedStudent = {
+                ...s,
+                payments: [...s.payments, newPayment].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            };
+            return updatedStudent;
+        }
+        return s;
+    });
+
+    setStudents(newStudents);
+    setState({ students: newStudents, paymentModalStudent: updatedStudent });
 }
 
 function handleEditStudent(studentId) {
@@ -476,18 +515,6 @@ function handleSubmit(e) {
     }
 }
 
-function handleAddPaymentSubmit(e) {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const data = Object.fromEntries(formData.entries());
-    data.amount = parseFloat(data.amount);
-    if (!data.amount || data.amount <= 0) {
-        alert('Please enter a valid payment amount.');
-        return;
-    }
-    handleAddPayment(state.paymentModalStudent.id, data);
-}
-
 function handleToggleSelectStudent(studentId) {
     const newSelectedIds = state.selectedStudentIds.includes(studentId)
         ? state.selectedStudentIds.filter(id => id !== studentId)
@@ -506,14 +533,14 @@ function handleToggleSelectAll() {
 
 function handleDeleteSelected() {
     if (window.confirm(`Are you sure you want to delete ${state.selectedStudentIds.length} student records? This action cannot be undone.`)) {
-        const [, setStudents] = useLocalStorage('students', state.students);
-        setStudents(prev => prev.filter(s => !state.selectedStudentIds.includes(s.id)));
-        setState({ selectedStudentIds: [] });
+        const students = getStudents();
+        const newStudents = students.filter(s => !state.selectedStudentIds.includes(s.id));
+        setStudents(newStudents);
+        setState({ students: newStudents, selectedStudentIds: [] });
     }
 }
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
-    const [students] = useLocalStorage('students', []);
-    setState({ students });
+    setState({ students: getStudents() });
 });
