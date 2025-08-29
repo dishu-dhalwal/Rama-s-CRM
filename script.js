@@ -103,6 +103,11 @@ function renderApp() {
     const root = document.getElementById('root');
     const { students, isFormModalOpen, editingStudent, paymentModalStudent, selectedStudentIds, searchTerm, filterStatus } = state;
 
+    const activeElement = document.activeElement;
+    const activeElementId = activeElement ? activeElement.id : null;
+    const selectionStart = activeElement ? activeElement.selectionStart : null;
+    const selectionEnd = activeElement ? activeElement.selectionEnd : null;
+
     const studentsWithStatus = students
         .map(student => ({
             ...student,
@@ -170,6 +175,16 @@ function renderApp() {
         </div>
     `;
     attachEventListeners();
+
+    if (activeElementId) {
+        const elementToFocus = document.getElementById(activeElementId);
+        if (elementToFocus) {
+            elementToFocus.focus();
+            if (selectionStart !== null && selectionEnd !== null) {
+                elementToFocus.setSelectionRange(selectionStart, selectionEnd);
+            }
+        }
+    }
 }
 
 function Header() {
