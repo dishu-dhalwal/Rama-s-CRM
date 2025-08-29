@@ -10,6 +10,7 @@ const EditIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="
 const CalendarIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>`;
 const ChevronLeftIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>`;
 const ChevronRightIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>`;
+const ExportIcon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>`;
 
 // --- UTILS ---
 const getFeeStatus = (student) => {
@@ -131,6 +132,10 @@ function renderApp() {
                             <button id="add-student-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 text-white font-semibold rounded-lg shadow-md hover:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-200">
                                 ${PlusIcon}
                                 Add New Student
+                            </button>
+                            <button id="export-csv-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-200">
+                                ${ExportIcon}
+                                Export to CSV
                             </button>
                         </div>
                     </div>
@@ -395,6 +400,7 @@ function PaymentModal(student) {
 // --- EVENT HANDLERS & ATTACHMENT ---
 function attachEventListeners() {
     document.getElementById('add-student-btn')?.addEventListener('click', openFormModal);
+    document.getElementById('export-csv-btn')?.addEventListener('click', exportToCSV);
     document.getElementById('delete-selected-btn')?.addEventListener('click', handleDeleteSelected);
     document.getElementById('search-input')?.addEventListener('input', (e) => setState({ searchTerm: e.target.value }));
     document.querySelectorAll('.filter-status-btn').forEach(btn => btn.addEventListener('click', (e) => setState({ filterStatus: e.currentTarget.dataset.status })));
@@ -537,6 +543,63 @@ function handleDeleteSelected() {
         const newStudents = students.filter(s => !state.selectedStudentIds.includes(s.id));
         setStudents(newStudents);
         setState({ students: newStudents, selectedStudentIds: [] });
+    }
+}
+
+function exportToCSV() {
+    const students = getStudents();
+    if (students.length === 0) {
+        alert("No student data to export.");
+        return;
+    }
+
+    const headers = [
+        "ID",
+        "Name",
+        "Mobile",
+        "Seat Number",
+        "Monthly Fee",
+        "Registration Date",
+        "Fee Status",
+        "Amount Due",
+        "Total Paid",
+        "Last Payment Date"
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    students.forEach(student => {
+        const feeStatus = getFeeStatus(student);
+        const totalPaid = student.payments.reduce((acc, p) => acc + p.amount, 0);
+        const lastPaymentDate = student.payments.length > 0 ? new Date(student.payments[0].date).toLocaleDateString('en-GB') : 'N/A';
+
+        const row = [
+            student.id,
+            `"${student.name}"`,
+            `"${student.mobile}"`,
+            `"${student.seatNumber}"`,
+            student.monthlyFee,
+            student.registrationDate,
+            feeStatus.text,
+            feeStatus.amountDue,
+            totalPaid,
+            lastPaymentDate
+        ].join(',');
+
+        csvRows.push(row);
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'students.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 }
 
